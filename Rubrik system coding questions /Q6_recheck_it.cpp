@@ -23,7 +23,7 @@ Builtin thread safe constructs like Deque, BlockingQueue, etc. can't be used. Im
 #include <queue>
 using namespace std;
 
-template<class Task> class blocking_queue{
+template<class Task> class new_queue{
     queue<Task> q;
     mutex mt;
     condition_variable cv;
@@ -53,7 +53,7 @@ template<class Task> class blocking_queue{
 };
 
 template<class Task> class scheduler{
-    blocking_queue<Task> q;
+    new_queue<Task> q;
     mutex mt;
     condition_variable cv;
     bool waitUntil=false;
