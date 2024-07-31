@@ -30,9 +30,10 @@ class dataStructure{
         mp[key]=value;  // if key already exists, then value is updated
     }
     
-    void takeSnapshot(){
+    int takeSnapshot(){
         snapshot_no++;
         snapshots[snapshot_no]=mp;
+        return snapshot_no;
     }
     
     int get(int key, int snap_id){
