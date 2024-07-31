@@ -21,9 +21,10 @@ Builtin thread safe constructs like Deque, BlockingQueue, etc. can't be used. Im
 #include <mutex>
 #include <condition_variable>
 #include <queue>
+#include <thread>
 using namespace std;
 
-template<class Task> class new_queue{
+template<class Task> class blocking_queue{
     queue<Task> q;
     mutex mt;
     condition_variable cv;
@@ -53,13 +54,31 @@ template<class Task> class new_queue{
 };
 
 template<class Task> class scheduler{
-    new_queue<Task> q;
+    blocking_queue<Task> q;
     mutex mt;
     condition_variable cv;
     bool waitUntil=false;
     bool terminate=false;
+    vector<thread> vec;
     
     public:
+    
+    scheduler(int num_threads){
+        waitUntil=false, terminate=false;
+        for(int i=0;i<num_threads;i++){
+            vec.emplace_back(thread(&scheduler::thread_work, this));
+        }
+    }
+    
+    ~scheduler(){
+        unique_lock<mutex> lk(mt);
+        terminate=true;
+        lk.unlock();
+        for(auto& x:vec){
+            x.join();
+        }
+    }
+    
     void schedule(Task tsk){
         unique_lock<mutex> lk(mt);
         cv.wait(lk,[&]{return !waitUntil;});
@@ -83,15 +102,10 @@ template<class Task> class scheduler{
             if(terminate && q.empty()){
                 return;
             }
+            lk.unlock();
             Task tsk= q.pop();
             // perform task
         }
-    }
-    
-    // call terminate when there are no more tasks to schedule
-    void terminate_all(){
-        unique_lock<mutex> lk(mt);
-        terminate=true;
     }
     
     
