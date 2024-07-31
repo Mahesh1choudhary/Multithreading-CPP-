@@ -28,82 +28,75 @@ Thanks!!
 
 */
 
+
 #include <iostream>
 #include <mutex>
 #include <condition_variable>
-
 using namespace std;
 
 class Client{
     public:
-    void init(){}
-    void request(){}
-    void close(){}
+    void init();
+    void request();
+    void close();
 };
 
+// once some thread calls close, we want entertain further requests calls from other threads
+// if request is called before init, then request have to wait till init is called by some thread, we will not discard them
+
+// once connection is closed, then further request have to wait till connection is opened again
 class ClientWrapper{
-    private:
-        Client obj;
-        bool connection_type; // 0- not opened yet, 1- open, 2- closed 
-        mutex mt;
-        condition_variable can_request, can_close;
-        int cnt;    // no of requests still running or wants to run
+    bool connection_startd=false;
+    int cnt=0;
+    mutex mt;
+    condition_variable waiting_to_request, waiting_to_close;
+    Client obj;
+    bool closed_called=false;
+    
     
     public:
-        ClientWrapper(Client &x){
-            connection_type=0;
-            obj=x;
-            cnt=0;
+    void init(){
+        unique_lock<mutex> lk(mt);
+        if(!connection_startd){
+            obj.init();
+            connection_startd=true;
         }
+        lk.unlock();
+        waiting_to_request.notify_all();
+        waiting_to_close.notify_all();
+    }
     
-        void init(){
-            unique_lock<mutex> lk(mt);
-            if(connection_type==0){
-                connection_type=1;
-                obj.init();
-                lk.unlock();
-                can_close.notify_all();
-                can_request.notify_all();
-            }
-        }
+    void request(){
+        unique_lock<mutex> lk(mt);
+        waiting_to_request.wait(lk,[&]{return connection_startd || closed_called;});
+        if(closed_called) return;   // once close is called, discard all further requests;
+        cnt++;
+        lk.unlock();
+        waiting_to_request.notify_all();
         
-        void request(){
-            unique_lock<mutex> lk(mt);
-            if(connection_type==2) return;
-            can_request.wait(lk, [&]{return connection_type==1;});
-            cnt++;
-            lk.unlock();
-            can_request.notify_all();
-            
-            obj.request();
-            
-            
-            can_request.wait(lk, [&]{return connection_type==1;});
-            cnt--;
-            lk.unlock();
-            can_close.notify_all();
-            can_request.notify_all();
-            
-        }
+        obj.request();
         
-        void close(){
-            unique_lock<mutex> lk(mt);
-            if(connection_type==2) return;
-            can_close.wait(lk,[&]{return connection_type==1 && cnt==0;});
-            obj.close();
-            connection_type=0;
-            
-        }
+        waiting_to_request.wait(lk,[&]{return true;});
+        cnt--;
+        lk.unlock();
+        waiting_to_close.notify_all();
+        waiting_to_request.notify_all();
+    }
+    
+    void close(){
+        unique_lock<mutex> lk(mt);
+        closed_called=true;
+        waiting_to_close.wait(lk, [&]{return connection_startd && cnt==0;});
+        obj.close();
+        connection_startd=false;
+        closed_called=false;
+    }
     
 };
-
-
-
-
 
 int main()
 {
-    std::cout<<"Hello World";
+    
 
     return 0;
 }
